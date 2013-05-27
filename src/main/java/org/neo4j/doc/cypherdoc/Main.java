@@ -23,98 +23,67 @@ import java.io.File;
 import java.io.IOException;
 
 import org.apache.commons.io.FileUtils;
-import org.neo4j.cypher.javacompat.ExecutionEngine;
-import org.neo4j.cypher.javacompat.ExecutionResult;
-import org.neo4j.graphdb.GraphDatabaseService;
-import org.neo4j.visualization.asciidoc.AsciidocHelper;
 
+/**
+ * Parses AsciiDoc files with some special markup to produce Cypher tutorials.
+ */
 public class Main
 {
+    private static final String[] EXTENSIONS = new String[] { "asciidoc",
+            "adoc" };
+
+    /**
+     * Transforms the given files or directories (searched recursively for
+     * .asciidoc or .adoc files). The result is found in the
+     * target/docs/cypherdoc directory. The output file name is based on the
+     * input file name (and the relative path if a directory got searched).
+     * 
+     * @param args files/directories to parse.
+     */
     public static void main( String[] args )
     {
         for ( String name : args )
         {
-            executeFile( FileUtils.getFile( name ) );
+            File file = FileUtils.getFile( name );
+            if ( file.isFile() )
+            {
+                executeFile( file, file.getName() );
+            }
+            else if ( file.isDirectory() )
+            {
+                for ( File fileInDir : FileUtils.listFiles( file, EXTENSIONS,
+                        true ) )
+                {
+                    String fileInDirName = fileInDir.getAbsolutePath()
+                            .substring( (int) file.getAbsolutePath()
+                                    .length() + 1 )
+                            .replace( '/', '-' )
+                            .replace( '\\', '-' );
+                    executeFile( fileInDir, fileInDirName );
+                }
+            }
         }
     }
 
-    private static void executeFile( File file )
+    /**
+     * Parse a single file.
+     * @param name TODO
+     */
+    private static void executeFile( File file, String name )
     {
-        String basename = file.getName();
         try
         {
             String input = FileUtils.readFileToString( file );
             String output = CypherDoc.parse( input );
-            System.out.println( "\n\n/// RESULT ///\n" );
-            System.out.println( output );
+
+            File targetDir = FileUtils.getFile( "target", "docs", "cypherdoc" );
+            FileUtils.forceMkdir( targetDir );
+            File targetFile = FileUtils.getFile( targetDir, name );
+            FileUtils.writeStringToFile( targetFile, output );
         }
         catch ( IOException ioe )
         {
             ioe.printStackTrace();
         }
-    }
-
-    private static void executeQuery( String basename, String name,
-            String query, GraphDatabaseService database, ExecutionEngine engine )
-            throws IOException
-    {
-        File targetDir = FileUtils.getFile( "target", "cypherdoc", basename );
-        String normalizedName = name.toLowerCase()
-                .replace( ' ', '-' );
-        FileUtils.forceMkdir( targetDir );
-
-        String cypherSnippet = createCypherSnippet( query );
-        writeToFile( targetDir, normalizedName + ".query.asciidoc",
-                cypherSnippet );
-
-        ExecutionResult result = engine.execute( query );
-        String resultSnippet = AsciidocHelper.createQueryResultSnippet( result.toString() );
-        writeToFile( targetDir, normalizedName + ".result.asciidoc",
-                resultSnippet );
-
-        String graphvizSnippet = AsciidocHelper.createGraphVizDeletingReferenceNode(
-                name, database, normalizedName );
-        writeToFile( targetDir, normalizedName + ".graph.asciidoc",
-                graphvizSnippet );
-
-        String consoleSnippet = createConsoleSnippet( query, database );
-        writeToFile( targetDir, normalizedName + ".console.asciidoc",
-                consoleSnippet );
-
-        String emptyConsoleSnippet = createConsoleSnippet( query );
-        writeToFile( targetDir, normalizedName + ".empty.console.asciidoc",
-                emptyConsoleSnippet );
-    }
-
-    private static void writeToFile( File targetDir, String filename,
-            String content ) throws IOException
-    {
-        File file = FileUtils.getFile( targetDir, filename );
-        FileUtils.writeStringToFile( file, content );
-    }
-
-    private static String createConsoleSnippet( String query,
-            GraphDatabaseService database )
-    {
-        String setup = "";// new GeoffService( database ).toGeoff();
-        return createConsole( query, setup );
-    }
-
-    private static String createConsoleSnippet( String query )
-    {
-        String setup = "start n=node(*) match n-[r?]->() delete n, r;";
-        return createConsole( query, setup );
-    }
-
-    private static String createConsole( String query, String setup )
-    {
-        return "[console]\n----\n" + setup + "\n\n" + query
-               + ( query.endsWith( "\n" ) ? "" : "\n" ) + "----\n";
-    }
-
-    private static String createCypherSnippet( String query )
-    {
-        return "[source,cypher]\n----\n" + query
-               + ( query.endsWith( "\n" ) ? "" : "\n" ) + "----\n";
     }
 }

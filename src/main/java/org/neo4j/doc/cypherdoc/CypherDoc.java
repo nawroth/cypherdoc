@@ -24,15 +24,19 @@ import java.util.List;
 
 import org.neo4j.cypher.javacompat.ExecutionEngine;
 import org.neo4j.graphdb.GraphDatabaseService;
+import org.neo4j.graphdb.Transaction;
 import org.neo4j.test.TestGraphDatabaseFactory;
 
+/**
+ * Parse AsciiDoc-like content for use in Cypher documentation.
+ * 
+ */
 public class CypherDoc
 {
     static final String EOL = System.getProperty( "line.separator" );
 
     private CypherDoc()
     {
-
     }
 
     public static String parse( String input )
@@ -50,7 +54,7 @@ public class CypherDoc
             if ( line.trim()
                     .isEmpty() && currentBlock.size() > 0 )
             {
-                blocks.add( getBlock( currentBlock ) );
+                blocks.add( Block.getBlock( currentBlock ) );
                 currentBlock = new ArrayList<String>();
             }
             else
@@ -60,34 +64,38 @@ public class CypherDoc
         }
         if ( currentBlock.size() > 0 )
         {
-            blocks.add( getBlock( currentBlock ) );
+            blocks.add( Block.getBlock( currentBlock ) );
         }
 
         StringBuilder output = new StringBuilder( 4096 );
         GraphDatabaseService database = new TestGraphDatabaseFactory().newImpermanentDatabase();
         ExecutionEngine engine = new ExecutionEngine( database );
-        Block previousBlock = null;
+
+        removeReferenceNode( database );
+
         for ( Block block : blocks )
         {
-            output.append( block.process( previousBlock, engine ) );
-            output.append( EOL )
+            output.append( block.process( block, engine, database ) )
+                    .append( EOL )
                     .append( EOL );
-            previousBlock = block;
         }
 
         return output.toString();
     }
 
-    private static Block getBlock( List<String> lines )
+    @SuppressWarnings( "deprecation" )
+    private static void removeReferenceNode( GraphDatabaseService database )
     {
-        for ( BlockType type : BlockType.values() )
+        Transaction tx = database.beginTx();
+        try
         {
-            if ( type.isA( lines ) )
-            {
-                return new Block( lines, type );
-            }
+            database.getReferenceNode()
+                    .delete();
+            tx.success();
         }
-        throw new IllegalArgumentException(
-                "Unidentifiable block, starting with:\n" + lines.get( 0 ) );
+        finally
+        {
+            tx.finish();
+        }
     }
 }

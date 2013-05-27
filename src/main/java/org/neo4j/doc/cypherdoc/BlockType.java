@@ -19,14 +19,20 @@
  */
 package org.neo4j.doc.cypherdoc;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
 import java.util.List;
 
 import org.apache.commons.lang3.StringUtils;
 import org.neo4j.cypher.javacompat.ExecutionEngine;
+import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.visualization.asciidoc.AsciidocHelper;
+import org.neo4j.visualization.graphviz.AsciiDocSimpleStyle;
+import org.neo4j.visualization.graphviz.GraphvizWriter;
+import org.neo4j.walk.Walker;
 
-//TODO add GRAPH, CONSOLE
 enum BlockType
 {
     TITLE
@@ -41,7 +47,8 @@ enum BlockType
         }
 
         @Override
-        String process( Block block, Block previousBlock, ExecutionEngine engine )
+        String process( Block block, ExecutionEngine engine,
+                GraphDatabaseService database )
         {
             String title = block.lines.get( 0 )
                     .replace( "=", "" )
@@ -78,17 +85,25 @@ enum BlockType
         }
 
         @Override
-        String process( Block block, Block previousBlock, ExecutionEngine engine )
+        String process( Block block, ExecutionEngine engine,
+                GraphDatabaseService database )
         {
             List<String> queryHeader = new ArrayList<String>();
             List<String> queryLines = new ArrayList<String>();
             List<String> testLines = new ArrayList<String>();
+            boolean includeResult = false;
             boolean queryStarted = false;
             boolean queryEnded = false;
             for ( String line : block.lines )
             {
                 if ( !queryStarted )
                 {
+                    if ( line.startsWith( "[" ) && line.contains( "source" )
+                         && line.contains( "cypher" )
+                         && line.contains( "includeresult" ) )
+                    {
+                        includeResult = true;
+                    }
                     if ( line.startsWith( "----" ) )
                     {
                         queryStarted = true;
@@ -137,10 +152,80 @@ enum BlockType
                     .append( CypherDoc.EOL )
                     .append( "----" )
                     .append( CypherDoc.EOL )
-                    .append( CypherDoc.EOL )
-                    .append( AsciidocHelper.createQueryResultSnippet( result ) );
+                    .append( CypherDoc.EOL );
+
+            if ( includeResult )
+            {
+                output.append( AsciidocHelper.createQueryResultSnippet( result ) );
+            }
             return output.toString();
         }
+    },
+    GRAPH
+    {
+        @Override
+        boolean isA( List<String> block )
+        {
+            String first = block.get( 0 );
+            return first.startsWith( "//" ) && first.contains( "graph:" );
+        }
+
+        @Override
+        String process( Block block, ExecutionEngine engine,
+                GraphDatabaseService database )
+        {
+            String first = block.lines.get( 0 );
+            String id = first.substring( first.indexOf( "graph:" ) + 6 )
+                    .trim();
+            GraphvizWriter writer = new GraphvizWriter(
+                    AsciiDocSimpleStyle.withAutomaticRelationshipTypeColors() );
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            try
+            {
+                writer.emit( out, Walker.fullGraph( database ) );
+            }
+            catch ( IOException e )
+            {
+                e.printStackTrace();
+            }
+            StringBuilder output = new StringBuilder( 512 );
+            try
+            {
+                String dot = out.toString( "UTF-8" );
+                output.append( "[\"dot\", \"cypherdoc-" )
+                        .append( id )
+                        .append( '-' )
+                        .append( Integer.toHexString( dot.hashCode() ) )
+                        .append( ".svg\", \"neoviz\"]\n----\n" )
+                        .append( dot )
+                        .append( "----\n" );
+            }
+            catch ( UnsupportedEncodingException e )
+            {
+                e.printStackTrace();
+            }
+            return output.toString();
+        }
+    },
+    CONSOLE
+    {
+        @Override
+        boolean isA( List<String> block )
+        {
+            String first = block.get( 0 );
+            return first.startsWith( "//" ) && first.contains( "console" );
+        }
+
+        @Override
+        String process( Block block, ExecutionEngine engine,
+                GraphDatabaseService database )
+        {
+            return "ifdef::backend-html,backend-html5,backend-xhtml11,backend-deckjs[]\n"
+                   + "++++\n"
+                   + "<div class=\"cypherdoc-console\"></div>\n"
+                   + "++++\n" + "endif::[]\n" + "";
+        }
+
     },
     TEXT
     {
@@ -153,7 +238,8 @@ enum BlockType
 
     abstract boolean isA( List<String> block );
 
-    String process( Block block, Block previousBlock, ExecutionEngine engine )
+    String process( Block block, ExecutionEngine engine,
+            GraphDatabaseService database )
     {
         return StringUtils.join( block.lines, CypherDoc.EOL );
     }

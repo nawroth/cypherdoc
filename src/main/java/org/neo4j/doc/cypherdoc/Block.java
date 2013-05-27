@@ -23,21 +23,22 @@ import java.util.List;
 
 import org.apache.commons.lang3.StringUtils;
 import org.neo4j.cypher.javacompat.ExecutionEngine;
+import org.neo4j.graphdb.GraphDatabaseService;
 
 class Block
 {
     public final List<String> lines;
     public final BlockType type;
 
-    Block( List<String> lines, BlockType type )
+    private Block( List<String> lines, BlockType type )
     {
         this.lines = lines;
         this.type = type;
     }
 
-    String process( Block previousBlock, ExecutionEngine engine )
+    String process( Block previousBlock, ExecutionEngine engine, GraphDatabaseService database )
     {
-        return type.process( this, previousBlock, engine );
+        return type.process( this, engine, database );
     }
 
     @Override
@@ -45,5 +46,18 @@ class Block
     {
         return "Block [[" + type.name() + "]]:" + CypherDoc.EOL
                + StringUtils.join( lines, CypherDoc.EOL ) + CypherDoc.EOL;
+    }
+
+    static Block getBlock( List<String> lines )
+    {
+        for ( BlockType type : BlockType.values() )
+        {
+            if ( type.isA( lines ) )
+            {
+                return new Block( lines, type );
+            }
+        }
+        throw new IllegalArgumentException(
+                "Unidentifiable block, starting with:\n" + lines.get( 0 ) );
     }
 }
