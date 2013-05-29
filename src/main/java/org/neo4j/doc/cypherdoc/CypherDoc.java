@@ -30,6 +30,20 @@ import org.neo4j.test.TestGraphDatabaseFactory;
 /**
  * Parse AsciiDoc-like content for use in Cypher documentation.
  * 
+ * <pre>
+ * The string/file is parsed top to bottom.
+ * The database isn't flushed: every query builds on the state left
+ * behind by the previous ones.
+ * 
+ * Commands:
+ *   // console
+ *     Adds an empty div with the class cypherdoc-console to HTML outputs. 
+ *   // graph: name
+ *     Adds a graphviz graph with "name" in the generated filename.
+ *     It will depict whatever state the graph is in at that moment.
+ *   Extra lines directly after a query:
+ *     The query result will be searched for each of the strings (one string per line).
+ * </pre>
  */
 public class CypherDoc
 {
@@ -39,15 +53,41 @@ public class CypherDoc
     {
     }
 
+    /**
+     * Parse a string as CypherDoc-enhanced AsciiDoc.
+     * 
+     * @param input
+     * @return
+     */
     public static String parse( String input )
     {
+        List<Block> blocks = parseBlocks( input );
+
+        StringBuilder output = new StringBuilder( 4096 );
+        GraphDatabaseService database = new TestGraphDatabaseFactory().newImpermanentDatabase();
+        ExecutionEngine engine = new ExecutionEngine( database );
+
+        removeReferenceNode( database );
+
+        for ( Block block : blocks )
+        {
+            output.append( block.process( engine, database ) )
+                    .append( EOL )
+                    .append( EOL );
+        }
+
+        return output.toString();
+    }
+
+    static List<Block> parseBlocks( String input )
+    {
         String[] lines = input.split( EOL );
-        List<Block> blocks = new ArrayList<Block>();
         if ( lines.length < 3 )
         {
             throw new IllegalArgumentException( "To little content, only "
                                                 + lines.length + " lines." );
         }
+        List<Block> blocks = new ArrayList<Block>();
         List<String> currentBlock = new ArrayList<String>();
         for ( String line : lines )
         {
@@ -66,25 +106,11 @@ public class CypherDoc
         {
             blocks.add( Block.getBlock( currentBlock ) );
         }
-
-        StringBuilder output = new StringBuilder( 4096 );
-        GraphDatabaseService database = new TestGraphDatabaseFactory().newImpermanentDatabase();
-        ExecutionEngine engine = new ExecutionEngine( database );
-
-        removeReferenceNode( database );
-
-        for ( Block block : blocks )
-        {
-            output.append( block.process( block, engine, database ) )
-                    .append( EOL )
-                    .append( EOL );
-        }
-
-        return output.toString();
+        return blocks;
     }
 
     @SuppressWarnings( "deprecation" )
-    private static void removeReferenceNode( GraphDatabaseService database )
+    static void removeReferenceNode( GraphDatabaseService database )
     {
         Transaction tx = database.beginTx();
         try

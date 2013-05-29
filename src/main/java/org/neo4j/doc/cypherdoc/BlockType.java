@@ -129,7 +129,7 @@ enum BlockType
                     testLines.add( line );
                 }
             }
-            String query = StringUtils.join( queryLines, "\n" );
+            String query = StringUtils.join( queryLines, CypherDoc.EOL );
             String result = engine.execute( query )
                     .dumpToString();
             for ( String test : testLines )
@@ -143,12 +143,13 @@ enum BlockType
                 }
 
             }
+            String prettifiedQuery = engine.prettify( query );
             StringBuilder output = new StringBuilder( 512 );
             output.append( StringUtils.join( queryHeader, CypherDoc.EOL ) )
                     .append( CypherDoc.EOL )
                     .append( "----" )
                     .append( CypherDoc.EOL )
-                    .append( StringUtils.join( queryLines, CypherDoc.EOL ) )
+                    .append( prettifiedQuery )
                     .append( CypherDoc.EOL )
                     .append( "----" )
                     .append( CypherDoc.EOL )
@@ -220,10 +221,12 @@ enum BlockType
         String process( Block block, ExecutionEngine engine,
                 GraphDatabaseService database )
         {
-            return "ifdef::backend-html,backend-html5,backend-xhtml11,backend-deckjs[]\n"
-                   + "++++\n"
-                   + "<div class=\"cypherdoc-console\"></div>\n"
-                   + "++++\n" + "endif::[]\n" + "";
+            return StringUtils.join(
+                    new String[] {
+                            "ifdef::backend-html,backend-html5,backend-xhtml11,backend-deckjs[]",
+                            "++++", "<div class=\"cypherdoc-console\"></div>",
+                            "++++", "endif::[]" }, CypherDoc.EOL )
+                   + CypherDoc.EOL;
         }
 
     },
@@ -241,6 +244,6 @@ enum BlockType
     String process( Block block, ExecutionEngine engine,
             GraphDatabaseService database )
     {
-        return StringUtils.join( block.lines, CypherDoc.EOL );
+        return StringUtils.join( block.lines, CypherDoc.EOL ) + CypherDoc.EOL;
     }
 }

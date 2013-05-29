@@ -36,7 +36,7 @@ class Block
         this.type = type;
     }
 
-    String process( Block previousBlock, ExecutionEngine engine, GraphDatabaseService database )
+    String process( ExecutionEngine engine, GraphDatabaseService database )
     {
         return type.process( this, engine, database );
     }
